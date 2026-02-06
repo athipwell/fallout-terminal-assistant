@@ -8,17 +8,19 @@
 
   <style>
     body {
-      background: black;
+      background: #050505;
       color: #0f0;
-      font-family: monospace;
+      font-family: 'Courier New', monospace;
       padding: 16px;
       max-width: 420px;
       margin: auto;
+      text-transform: uppercase;
     }
 
-    h1,
-    h2 {
+    h1, h2 {
       text-align: center;
+      border-bottom: 2px solid #0f0;
+      padding-bottom: 8px;
     }
 
     label {
@@ -26,81 +28,164 @@
       margin-top: 14px;
       margin-bottom: 4px;
       font-size: 14px;
+      font-weight: bold;
     }
 
-    textarea,
-    input,
-    button {
+    textarea, input, button {
       width: 100%;
-      font-family: monospace;
+      font-family: 'Courier New', monospace;
       font-size: 18px;
-      padding: 8px;
-      background: black;
+      padding: 10px;
+      background: #000;
       color: #0f0;
       border: 1px solid #0f0;
       box-sizing: border-box;
+      margin-bottom: 5px;
     }
 
     button {
-      margin-top: 14px;
-      font-size: 20px;
+      margin-top: 10px;
+      font-size: 18px;
       cursor: pointer;
+      background: #030;
+      transition: 0.2s;
+    }
+
+    button:active {
+      background: #0f0;
+      color: #000;
+    }
+
+    .voice-btn {
+      background: #300;
+      border-color: #f00;
+      color: #f66;
     }
 
     pre {
       margin-top: 12px;
       white-space: pre-wrap;
-      font-size: 18px;
-      /*line-height: 1.4;*/
-      color: cyan;
+      font-size: 22px;
+      color: #0ff;
       text-align: center;
+      background: rgba(0, 255, 255, 0.1);
+      padding: 10px;
+    }
+
+    .status {
+      font-size: 12px;
+      text-align: center;
+      height: 15px;
+      color: #888;
     }
   </style>
 </head>
 
 <body>
-  <h1>Terminal Passcode Assistant</h1>
+  <h1>Terminal Link</h1>
 
   <label>Word List</label>
-  <textarea id="words" rows="6" placeholder="Enter words, one per line"></textarea>
+  <textarea id="words" rows="6" placeholder="TYPE OR SPEAK WORDS..."></textarea>
+  
+  <button class="voice-btn" onclick="startDictation()" id="mic-btn">🎤 Start Voice Input</button>
+  <div id="status" class="status"></div>
 
-  <label>Guessed Word</label>
-  <input id="guess" placeholder="Guess">
+  <hr style="border: 0; border-top: 1px solid #030; margin: 20px 0;">
 
-  <label>Number Correct</label>
-  <input id="score" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="# Correct">
+  <label>Current Guess</label>
+  <input id="guess" placeholder="ENTER WORD GUESSED">
 
+  <label>Likeness Score</label>
+  <input id="score" type="number" inputmode="numeric" placeholder="0">
 
+  <button onclick="makeGuess()">Filter Candidates</button>
+  <button onclick="resetApp()" style="background: #222;">Reset</button>
 
-  <button onclick="makeGuess()">Filter Words</button>
-
-  <h2>Remaining Words</h2>
-  <pre id="remaining"></pre>
+  <h2>Valid Matches</h2>
+  <pre id="remaining">---</pre>
 
   <script>
     let candidates = [];
 
+    // Clean text: removes symbols, splits into array, forces Uppercase
+    function cleanInput(text) {
+      return text
+        .replace(/[^a-zA-Z\s]/g, ' ') // Remove non-letters
+        .split(/\s+/)                // Split by whitespace
+        .filter(w => w.length > 2)   // Only words longer than 2 chars
+        .map(w => w.toUpperCase());
+    }
+
+    function startDictation() {
+      const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      const status = document.getElementById('status');
+      const micBtn = document.getElementById('mic-btn');
+
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+
+      status.textContent = "Listening... Speak the words clearly.";
+      micBtn.style.background = "#f00";
+      micBtn.style.color = "#000";
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        const cleanedWords = cleanInput(transcript);
+        const textArea = document.getElementById('words');
+        
+        // Append new words to existing list
+        if (textArea.value.trim().length > 0) textArea.value += "\n";
+        textArea.value += cleanedWords.join('\n');
+        
+        status.textContent = "Added: " + cleanedWords.length + " words.";
+      };
+
+      recognition.onend = () => {
+        micBtn.style.background = "#300";
+        micBtn.style.color = "#f66";
+        if(status.textContent.includes("Listening")) status.textContent = "Ready.";
+      };
+
+      recognition.start();
+    }
+
     function likeness(a, b) {
       let score = 0;
-      for (let i = 0; i < a.length; i++) {
+      const length = Math.min(a.length, b.length);
+      for (let i = 0; i < length; i++) {
         if (a[i] === b[i]) score++;
       }
       return score;
     }
 
     function makeGuess() {
-      if (!candidates.length) {
-        candidates = document.getElementById('words').value
-          .split('\n')
-          .map(w => w.trim())
-          .filter(w => w);
+      // If candidates list is empty, initialize it from the textarea
+      if (candidates.length === 0) {
+        candidates = cleanInput(document.getElementById('words').value);
       }
 
-      const guess = document.getElementById('guess').value.trim();
+      const guess = document.getElementById('guess').value.trim().toUpperCase();
       const score = parseInt(document.getElementById('score').value);
 
-      candidates = candidates.filter(w => likeness(w, guess) === score);
-      document.getElementById('remaining').textContent = candidates.join('\n');
+      if (isNaN(score)) {
+        alert("Enter a likeness score first.");
+        return;
+      }
+
+      // Filter based on likeness
+      candidates = candidates.filter(w => likeness(w, guess) === score && w !== guess);
+      
+      document.getElementById('remaining').textContent = 
+        candidates.length > 0 ? candidates.join('\n') : "NO MATCHES FOUND";
+    }
+
+    function resetApp() {
+      candidates = [];
+      document.getElementById('words').value = "";
+      document.getElementById('guess').value = "";
+      document.getElementById('score').value = "";
+      document.getElementById('remaining').textContent = "---";
+      document.getElementById('status').textContent = "Reset complete.";
     }
   </script>
 </body>

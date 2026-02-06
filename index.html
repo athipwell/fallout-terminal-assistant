@@ -1,202 +1,179 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fallout Terminal Helper</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fallout Terminal Helper</title>
 
-  <!-- OCR Engine -->
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
-  <style>
-    body {
-      background: black;
-      color: #0f0;
-      font-family: monospace;
-      padding: 16px;
-      max-width: 420px;
-      margin: auto;
-    }
+<style>
+body {
+  background:black;
+  color:#0f0;
+  font-family:monospace;
+  max-width:420px;
+  margin:auto;
+  padding:16px;
+}
 
-    h1, h2 {
-      text-align: center;
-    }
+h1,h2 { text-align:center; }
 
-    label {
-      display: block;
-      margin-top: 14px;
-      margin-bottom: 4px;
-      font-size: 14px;
-    }
+button,input,textarea {
+  width:100%;
+  font-family:monospace;
+  font-size:18px;
+  background:black;
+  color:#0f0;
+  border:1px solid #0f0;
+  padding:8px;
+  margin-top:10px;
+}
 
-    textarea,
-    input,
-    button {
-      width: 100%;
-      font-family: monospace;
-      font-size: 18px;
-      padding: 8px;
-      background: black;
-      color: #0f0;
-      border: 1px solid #0f0;
-      box-sizing: border-box;
-    }
+video {
+  width:100%;
+  border:1px solid #0f0;
+  margin-top:10px;
+}
 
-    button {
-      margin-top: 12px;
-      font-size: 20px;
-      cursor: pointer;
-    }
+.wordRow {
+  display:flex;
+  gap:6px;
+  margin-top:6px;
+}
 
-    video {
-      width: 100%;
-      border: 1px solid #0f0;
-      margin-top: 12px;
-    }
+.wordRow input {
+  flex:1;
+  color:cyan;
+}
 
-    pre {
-      margin-top: 12px;
-      white-space: pre-wrap;
-      font-size: 18px;
-      color: cyan;
-      text-align: center;
-    }
-  </style>
+pre {
+  text-align:center;
+  color:cyan;
+  font-size:18px;
+}
+</style>
 </head>
 
 <body>
-  <h1>Terminal Passcode Assistant</h1>
 
-  <button onclick="startCamera()">📷 Scan Terminal</button>
+<h1>Terminal Passcode Assistant</h1>
 
-  <video id="video" autoplay playsinline></video>
-  <button id="captureBtn" onclick="captureFrame()" style="display:none;">
-    📸 Capture Frame
-  </button>
+<button onclick="startCamera()">📷 Scan Column</button>
+<video id="video" autoplay playsinline></video>
+<button id="captureBtn" onclick="captureFrame()" style="display:none;">📸 Capture</button>
+<canvas id="canvas" style="display:none;"></canvas>
 
-  <canvas id="canvas" style="display:none;"></canvas>
+<h2>Confirm Words</h2>
+<div id="confirm"></div>
+<button onclick="confirmWords()">✅ Use These Words</button>
 
-  <label>Word List</label>
-  <textarea id="words" rows="6" placeholder="Words detected from terminal"></textarea>
+<label>Guessed Word</label>
+<input id="guess">
 
-  <label>Guessed Word</label>
-  <input id="guess" placeholder="Guess" />
+<label>Number Correct</label>
+<input id="score" inputmode="numeric">
 
-  <label>Number Correct</label>
-  <input
-    id="score"
-    type="text"
-    inputmode="numeric"
-    pattern="[0-9]*"
-    placeholder="# Correct"
-  />
+<button onclick="makeGuess()">Filter Words</button>
 
-  <button onclick="makeGuess()">Filter Words</button>
+<h2>Remaining</h2>
+<pre id="remaining"></pre>
 
-  <h2>Remaining Words</h2>
-  <pre id="remaining"></pre>
+<script>
+let stream = null;
+let candidates = [];
 
-  <script>
-    let candidates = [];
-    let stream = null;
-
-    function likeness(a, b) {
-      let score = 0;
-      for (let i = 0; i < a.length; i++) {
-        if (a[i] === b[i]) score++;
-      }
-      return score;
-    }
-
-    function makeGuess() {
-      if (!candidates.length) {
-        candidates = document.getElementById('words').value
-          .split('\n')
-          .map(w => w.trim())
-          .filter(w => w);
-      }
-
-      const guess = document.getElementById('guess').value.trim();
-      const score = parseInt(document.getElementById('score').value);
-
-      candidates = candidates.filter(w => likeness(w, guess) === score);
-      document.getElementById('remaining').textContent = candidates.join('\n');
-    }
-
-    async function startCamera() {
-      const video = document.getElementById('video');
-      const captureBtn = document.getElementById('captureBtn');
-
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" }
-      });
-
-      video.srcObject = stream;
-      captureBtn.style.display = "block";
-    }
-
-    async function captureFrame() {
-      const video = document.getElementById('video');
-      const canvas = document.getElementById('canvas');
-      const ctx = canvas.getContext('2d');
-
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0);
-
-      stream.getTracks().forEach(t => t.stop());
-      document.getElementById('captureBtn').style.display = "none";
-
-      const result = await Tesseract.recognize(canvas, 'eng');
-      processOCR(result.data.text);
-    }
-
-    function processOCR(text) {
-  const lines = text
-    .toUpperCase()
-    .split('\n')
-    .map(l => l.replace(/[^A-Z]/g, '').trim())
-    .filter(l => l);
-
-  const reconstructed = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const current = lines[i];
-    const next = lines[i + 1];
-
-    // Merge broken words (e.g. L + IVES)
-    if (current.length <= 2 && next && next.length >= 3) {
-      reconstructed.push(current + next);
-      i++; // skip next line
-    } else {
-      reconstructed.push(current);
-    }
-  }
-
-  // Only keep reasonable word lengths
-  const words = reconstructed.filter(w => w.length >= 4);
-
-  // Determine dominant length (Fallout passwords)
-  const lengthCounts = {};
-  words.forEach(w => {
-    lengthCounts[w.length] = (lengthCounts[w.length] || 0) + 1;
-  });
-
-  const bestLength = Object.entries(lengthCounts)
-    .sort((a, b) => b[1] - a[1])[0]?.[0];
-
-  if (!bestLength) return;
-
-  const finalWords = [...new Set(
-    words.filter(w => w.length == bestLength)
-  )];
-
-  document.getElementById('words').value = finalWords.join('\n');
-  candidates = [];
-  document.getElementById('remaining').textContent = '';
+function likeness(a,b){
+  let s=0;
+  for(let i=0;i<a.length;i++) if(a[i]===b[i]) s++;
+  return s;
 }
 
-  </script>
+function makeGuess(){
+  if(!candidates.length){
+    candidates = document.getElementById('wordsFinal').value
+      .split('\n').map(w=>w.trim()).filter(Boolean);
+  }
+  const g = guess.value.trim();
+  const sc = parseInt(score.value);
+  candidates = candidates.filter(w=>likeness(w,g)===sc);
+  remaining.textContent = candidates.join('\n');
+}
+
+async function startCamera(){
+  video.srcObject = await navigator.mediaDevices.getUserMedia({
+    video:{facingMode:"environment"}
+  });
+  stream = video.srcObject;
+  captureBtn.style.display="block";
+}
+
+async function captureFrame(){
+  canvas.width = video.videoWidth * 2;
+  canvas.height = video.videoHeight * 2;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+
+  stream.getTracks().forEach(t=>t.stop());
+  captureBtn.style.display="none";
+
+  const img = ctx.getImageData(0,0,canvas.width,canvas.height);
+  const d = img.data;
+  for(let i=0;i<d.length;i+=4){
+    const g=(d[i]+d[i+1]+d[i+2])/3;
+    const v=g>140?255:0;
+    d[i]=d[i+1]=d[i+2]=v;
+  }
+  ctx.putImageData(img,0,0);
+
+  const res = await Tesseract.recognize(canvas,'eng',{
+    tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    tessedit_pageseg_mode:6
+  });
+
+  buildConfirmList(res.data.text);
+}
+
+function buildConfirmList(text){
+  confirm.innerHTML="";
+  const lines = text.split('\n')
+    .map(l=>l.replace(/[^A-Z]/g,'').trim())
+    .filter(l=>l.length>=3);
+
+  lines.forEach(l=>{
+    const row=document.createElement('div');
+    row.className='wordRow';
+    const inp=document.createElement('input');
+    inp.value=l;
+    row.appendChild(inp);
+    confirm.appendChild(row);
+  });
+}
+
+function confirmWords(){
+  const words=[...document.querySelectorAll('#confirm input')]
+    .map(i=>i.value.trim())
+    .filter(w=>w.length>=4);
+
+  // dominant length filter
+  const counts={};
+  words.forEach(w=>counts[w.length]=(counts[w.length]||0)+1);
+  const len=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
+
+  const final=[...new Set(words.filter(w=>w.length==len))];
+
+  let ta=document.getElementById('wordsFinal');
+  if(!ta){
+    ta=document.createElement('textarea');
+    ta.id='wordsFinal';
+    ta.style.display='none';
+    document.body.appendChild(ta);
+  }
+  ta.value=final.join('\n');
+  candidates=[];
+  remaining.textContent="";
+}
+</script>
+
 </body>
 </html>
-

@@ -152,28 +152,51 @@
     }
 
     function processOCR(text) {
-      const tokens = text
-        .toUpperCase()
-        .match(/[A-Z]{4,}/g) || [];
+  const lines = text
+    .toUpperCase()
+    .split('\n')
+    .map(l => l.replace(/[^A-Z]/g, '').trim())
+    .filter(l => l);
 
-      const lengthCounts = {};
-      tokens.forEach(w => {
-        lengthCounts[w.length] = (lengthCounts[w.length] || 0) + 1;
-      });
+  const reconstructed = [];
 
-      const bestLength = Object.entries(lengthCounts)
-        .sort((a, b) => b[1] - a[1])[0]?.[0];
+  for (let i = 0; i < lines.length; i++) {
+    const current = lines[i];
+    const next = lines[i + 1];
 
-      if (!bestLength) return;
-
-      const words = [...new Set(
-        tokens.filter(w => w.length == bestLength)
-      )];
-
-      document.getElementById('words').value = words.join('\n');
-      candidates = [];
-      document.getElementById('remaining').textContent = '';
+    // Merge broken words (e.g. L + IVES)
+    if (current.length <= 2 && next && next.length >= 3) {
+      reconstructed.push(current + next);
+      i++; // skip next line
+    } else {
+      reconstructed.push(current);
     }
+  }
+
+  // Only keep reasonable word lengths
+  const words = reconstructed.filter(w => w.length >= 4);
+
+  // Determine dominant length (Fallout passwords)
+  const lengthCounts = {};
+  words.forEach(w => {
+    lengthCounts[w.length] = (lengthCounts[w.length] || 0) + 1;
+  });
+
+  const bestLength = Object.entries(lengthCounts)
+    .sort((a, b) => b[1] - a[1])[0]?.[0];
+
+  if (!bestLength) return;
+
+  const finalWords = [...new Set(
+    words.filter(w => w.length == bestLength)
+  )];
+
+  document.getElementById('words').value = finalWords.join('\n');
+  candidates = [];
+  document.getElementById('remaining').textContent = '';
+}
+
   </script>
 </body>
 </html>
+

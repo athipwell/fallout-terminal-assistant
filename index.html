@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fallout Terminal Assistant</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fallout Terminal Helper</title>
 
-  <!-- Tesseract OCR -->
+  <!-- OCR Engine -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <style>
@@ -29,7 +29,9 @@
       font-size: 14px;
     }
 
-    textarea, input, button {
+    textarea,
+    input,
+    button {
       width: 100%;
       font-family: monospace;
       font-size: 18px;
@@ -41,9 +43,15 @@
     }
 
     button {
-      margin-top: 14px;
+      margin-top: 12px;
       font-size: 20px;
       cursor: pointer;
+    }
+
+    video {
+      width: 100%;
+      border: 1px solid #0f0;
+      margin-top: 12px;
     }
 
     pre {
@@ -53,37 +61,44 @@
       color: cyan;
       text-align: center;
     }
-
-    video, canvas {
-      display: none;
-    }
   </style>
 </head>
 
 <body>
   <h1>Terminal Passcode Assistant</h1>
 
-  <button onclick="scanTerminal()">📷 Scan Terminal</button>
+  <button onclick="startCamera()">📷 Scan Terminal</button>
+
+  <video id="video" autoplay playsinline></video>
+  <button id="captureBtn" onclick="captureFrame()" style="display:none;">
+    📸 Capture Frame
+  </button>
+
+  <canvas id="canvas" style="display:none;"></canvas>
 
   <label>Word List</label>
-  <textarea id="words" rows="6" placeholder="Enter words, one per line"></textarea>
+  <textarea id="words" rows="6" placeholder="Words detected from terminal"></textarea>
 
   <label>Guessed Word</label>
-  <input id="guess" placeholder="Guess">
+  <input id="guess" placeholder="Guess" />
 
   <label>Number Correct</label>
-  <input id="score" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="# Correct">
+  <input
+    id="score"
+    type="text"
+    inputmode="numeric"
+    pattern="[0-9]*"
+    placeholder="# Correct"
+  />
 
   <button onclick="makeGuess()">Filter Words</button>
 
   <h2>Remaining Words</h2>
   <pre id="remaining"></pre>
 
-  <video id="video"></video>
-  <canvas id="canvas"></canvas>
-
   <script>
     let candidates = [];
+    let stream = null;
 
     function likeness(a, b) {
       let score = 0;
@@ -108,46 +123,57 @@
       document.getElementById('remaining').textContent = candidates.join('\n');
     }
 
-    async function scanTerminal() {
+    async function startCamera() {
       const video = document.getElementById('video');
-      const canvas = document.getElementById('canvas');
-      const ctx = canvas.getContext('2d');
+      const captureBtn = document.getElementById('captureBtn');
 
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" }
       });
 
       video.srcObject = stream;
-      await video.play();
+      captureBtn.style.display = "block";
+    }
 
-      // Capture frame after short delay
-      setTimeout(async () => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
+    async function captureFrame() {
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
 
-        stream.getTracks().forEach(t => t.stop());
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
 
-        const result = await Tesseract.recognize(canvas, 'eng');
-        processOCR(result.data.text);
-      }, 1200);
+      stream.getTracks().forEach(t => t.stop());
+      document.getElementById('captureBtn').style.display = "none";
+
+      const result = await Tesseract.recognize(canvas, 'eng');
+      processOCR(result.data.text);
     }
 
     function processOCR(text) {
-      // Guess word length from first typed guess (fallback: 5)
-      const expectedLength =
-        document.getElementById('guess').value.length || 5;
-
-      const words = text
+      const tokens = text
         .toUpperCase()
-        .split(/\s+/)
-        .map(t => t.replace(/[^A-Z]/g, ''))
-        .filter(t => t.length === expectedLength);
+        .match(/[A-Z]{4,}/g) || [];
 
-      const unique = [...new Set(words)];
-      document.getElementById('words').value = unique.join('\n');
+      const lengthCounts = {};
+      tokens.forEach(w => {
+        lengthCounts[w.length] = (lengthCounts[w.length] || 0) + 1;
+      });
+
+      const bestLength = Object.entries(lengthCounts)
+        .sort((a, b) => b[1] - a[1])[0]?.[0];
+
+      if (!bestLength) return;
+
+      const words = [...new Set(
+        tokens.filter(w => w.length == bestLength)
+      )];
+
+      document.getElementById('words').value = words.join('\n');
+      candidates = [];
+      document.getElementById('remaining').textContent = '';
     }
   </script>
 </body>
 </html>
-

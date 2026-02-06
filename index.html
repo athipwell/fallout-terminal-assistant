@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fallout Terminal Helper</title>
+
+  <!-- Tesseract OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <style>
     body {
@@ -16,8 +18,7 @@
       margin: auto;
     }
 
-    h1,
-    h2 {
+    h1, h2 {
       text-align: center;
     }
 
@@ -28,9 +29,7 @@
       font-size: 14px;
     }
 
-    textarea,
-    input,
-    button {
+    textarea, input, button {
       width: 100%;
       font-family: monospace;
       font-size: 18px;
@@ -51,15 +50,20 @@
       margin-top: 12px;
       white-space: pre-wrap;
       font-size: 18px;
-      /*line-height: 1.4;*/
       color: cyan;
       text-align: center;
+    }
+
+    video, canvas {
+      display: none;
     }
   </style>
 </head>
 
 <body>
   <h1>Terminal Passcode Assistant</h1>
+
+  <button onclick="scanTerminal()">📷 Scan Terminal</button>
 
   <label>Word List</label>
   <textarea id="words" rows="6" placeholder="Enter words, one per line"></textarea>
@@ -70,12 +74,13 @@
   <label>Number Correct</label>
   <input id="score" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="# Correct">
 
-
-
   <button onclick="makeGuess()">Filter Words</button>
 
   <h2>Remaining Words</h2>
   <pre id="remaining"></pre>
+
+  <video id="video"></video>
+  <canvas id="canvas"></canvas>
 
   <script>
     let candidates = [];
@@ -102,7 +107,46 @@
       candidates = candidates.filter(w => likeness(w, guess) === score);
       document.getElementById('remaining').textContent = candidates.join('\n');
     }
+
+    async function scanTerminal() {
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" }
+      });
+
+      video.srcObject = stream;
+      await video.play();
+
+      // Capture frame after short delay
+      setTimeout(async () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+
+        stream.getTracks().forEach(t => t.stop());
+
+        const result = await Tesseract.recognize(canvas, 'eng');
+        processOCR(result.data.text);
+      }, 1200);
+    }
+
+    function processOCR(text) {
+      // Guess word length from first typed guess (fallback: 5)
+      const expectedLength =
+        document.getElementById('guess').value.length || 5;
+
+      const words = text
+        .toUpperCase()
+        .split(/\s+/)
+        .map(t => t.replace(/[^A-Z]/g, ''))
+        .filter(t => t.length === expectedLength);
+
+      const unique = [...new Set(words)];
+      document.getElementById('words').value = unique.join('\n');
+    }
   </script>
 </body>
-
 </html>

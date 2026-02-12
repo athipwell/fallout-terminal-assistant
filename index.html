@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fallout Terminal Assistant Pro</title>
+  <style>
+    body { background: #050505; color: #0f0; font-family: 'Courier New', monospace; padding: 16px; max-width: 420px; margin: auto; text-transform: uppercase; }
+    h1 { text-align: center; border-bottom: 2px solid #0f0; margin-bottom: 10px; font-size: 20px; }
+    label { display: block; margin-top: 14px; font-size: 12px; color: #0a0; }
+    textarea, input, button { width: 100%; font-family: 'Courier New', monospace; font-size: 18px; padding: 10px; background: #000; color: #0f0; border: 1px solid #0f0; box-sizing: border-box; }
+    
+    /* Toggle Switch Style */
+    .mic-container { display: flex; align-items: center; justify-content: space-between; background: #010; padding: 10px; border: 1px inset #0f0; margin-top: 5px; }
+    .voice-active { color: #f00; animation: blink 1s infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    button { margin-top: 10px; cursor: pointer; background: #030; }
+    button:active { background: #0f0; color: #000; }
+    .filter-btn { background: #004400; font-weight: bold; border-width: 2px; }
+    
+    pre { margin-top: 12px; white-space: pre-wrap; font-size: 20px; color: #0ff; text-align: center; background: rgba(0, 255, 255, 0.05); padding: 10px; border: 1px dashed #0ff; }
+    .log { font-size: 10px; color: #666; margin-top: 10px; border-top: 1px solid #222; }
+  </style>
+</head>
+<body>
+
+  <h1>ROBCO TERMINAL PROTOCOL</h1>
+
+  <label>1. LOAD WORD LIST</label>
+  <textarea id="words" rows="5" placeholder="ENTER ALL WORDS..."></textarea>
+  
+  <div class="mic-container">
+    <span id="mic-status">MIC: OFF</span>
+    <button onclick="toggleVoice()" id="mic-btn" style="width: auto; margin: 0; padding: 5px 15px;">START LISTENING</button>
+  </div>
+
+  <label>2. ENTER GUESS & LIKENESS</label>
+  <div style="display: flex; gap: 5px;">
+    <input id="guess" placeholder="WORD" style="flex: 2;">
+    <input id="score" type="number" inputmode="numeric" placeholder="0" style="flex: 1;">
+  </div>
+
+  <button class="filter-btn" onclick="makeGuess()">EXECUTE FILTER</button>
+  <button onclick="resetApp()" style="background: #222; font-size: 12px;">CLEAR ALL DATA</button>
+
+  <h2>POSSIBILITIES</h2>
+  <pre id="remaining">---</pre>
+
+  <div class="log" id="history">LOG: NO GUESSES YET</div>
+
+  <script>
+    let candidates = [];
+    let isListening = false;
+    let recognition;
+
+    // Initialize Speech
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      recognition = new (window.webkitSpeechRecognition || window.SpeechRecognition)();
+      recognition.continuous = true; // KEEP IT ON
+      recognition.interimResults = false;
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[event.results.length - 1][0].transcript;
+        const cleanedWords = transcript.replace(/[^a-zA-Z\s]/g, ' ').split(/\s+/).filter(w => w.length > 2);
+        const textArea = document.getElementById('words');
+        textArea.value += (textArea.value ? '\n' : '') + cleanedWords.join('\n').toUpperCase();
+      };
+
+      recognition.onend = () => {
+        if (isListening) recognition.start(); // Auto-restart if we didn't mean to stop
+      };
+    }
+
+    function toggleVoice() {
+      const btn = document.getElementById('mic-btn');
+      const status = document.getElementById('mic-status');
+      
+      if (!isListening) {
+        recognition.start();
+        isListening = true;
+        btn.textContent = "STOP LISTENING";
+        status.textContent = "MIC: LISTENING...";
+        status.classList.add('voice-active');
+      } else {
+        isListening = false;
+        recognition.stop();
+        btn.textContent = "START LISTENING";
+        status.textContent = "MIC: OFF";
+        status.classList.remove('voice-active');
+      }
+    }
+
+    function getLikeness(str1, str2) {
+      let score = 0;
+      // Fallout likeness is position-dependent.
+      // If lengths differ (due to OCR error), we only check up to the shortest word length.
+      const len = Math.min(str1.length, str2.length);
+      for (let i = 0; i < len; i++) {
+        if (str1[i] === str2[i]) score++;
+      }
+      return score;
+    }
+
+    function makeGuess() {
+      const wordInput = document.getElementById('words').value;
+      const guess = document.getElementById('guess').value.trim().toUpperCase();
+      const score = parseInt(document.getElementById('score').value);
+
+      if (!guess || isNaN(score)) {
+        alert("Enter both the guessed word and the likeness score.");
+        return;
+      }
+
+      // First run: Build the candidate list
+      if (candidates.length === 0) {
+        candidates = wordInput.split(/\s+/).map(w => w.toUpperCase()).filter(w => w.length > 1);
+      }
+
+      // FILTERING LOGIC
+      // We keep words only if their likeness to our GUESS matches the SCORE provided.
+      // Example: If likeness is 0, we remove every word that shares even ONE letter in the same spot.
+      candidates = candidates.filter(word => {
+        // Don't keep the word we just guessed
+        if (word === guess) return false;
+        return getLikeness(word, guess) === score;
+      });
+
+      // Update UI
+      document.getElementById('remaining').textContent = candidates.length > 0 ? candidates.join('\n') : "TERMINAL LOCKED: NO MATCHES";
+      
+      // Add to Log
+      const logEntry = `[GUESS: ${guess} | SCORE: ${score}]`;
+      const historyDiv = document.getElementById('history');
+      historyDiv.innerHTML += `<br>${logEntry}`;
+      
+      // Clear guess inputs for next round
+      document.getElementById('guess').value = "";
+      document.getElementById('score').value = "";
+    }
+
+    function resetApp() {
+      candidates = [];
+      document.getElementById('words').value = "";
+      document.getElementById('guess').value = "";
+      document.getElementById('score').value = "";
+      document.getElementById('remaining').textContent = "---";
+      document.getElementById('history').innerHTML = "LOG: DATA WIPED";
+      if (isListening) toggleVoice();
+    }
+  </script>
+</body>
+</html>
